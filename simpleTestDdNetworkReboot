@@ -1,0 +1,177 @@
+#! /usr/bin/expect 
+#log file :will creat a file named by CurrentTime
+#####################################################################################################################################
+set CurrentTime [clock seconds]
+log_file testresult
+#####################################################################################################################################
+#
+#
+#proc 
+#
+#
+#####################################################################################################################################
+#
+#Login use SSH
+#
+proc SSH { Password }  {  set timeout 180
+	expect {
+		"*yes/no*" { send "yes\r";exp_continue }
+		"*assword*" { send "$Password\r";exp_continue }
+		"*#*" { send_user "\r\r\r\r\rLogin Success\r\r\r\r\r" }
+		timeout { send_user "\r\r\r\r\rLogin Timeout\r\r\r\r\r";exit 1 }
+	}
+
+}
+#
+#login by Telnet
+#
+proc Telnet { User Password }  { set timeout 180
+	expect {
+                "*login*" { send "$User\r";exp_continue }
+                "*assword*" { send "$Password\r";exp_continue }
+                "*]#*" { send_user "\r\r\r\r\rLogin Success\r\r\r\r\r" }
+                timeout { send_user "\r\r\r\r\rLogin Timeout\r\r\r\r\r";exit 1 }
+                               }                                    
+}
+#
+#startVM use VM to set
+#
+proc StartVM { VM }  { 
+                       send "(nohup $VM &)\r"
+                       expect "nohup: appending output to \'nohup.out\'"                     
+                       send "\r"
+                       expect "*#*"
+                       
+}
+#
+#force shutdown use pid
+#
+proc ShutdownVM  {  } { send "kill 9 \$\(ps -ef\|grep \"/usr/libexec/qemu-kvm\" \|grep -v grep\|awk \'\{print \$2\}\'\)\r"                    
+                           expect "*#*" 
+} 
+                    
+############################################################################################################################################
+#
+#
+#environment
+#
+#
+############################################################################################################################################
+set HostIP $argv
+send_user "HostIP$HostIP"
+set HostUser "root"
+set HostPassword "redhat"
+set GuestUser "root"
+set GuestPassword "redhat"
+set MonitorTelnetIP "$argv 3333"
+set VMBase "/usr/libexec/qemu-kvm \
+        -name rhel \
+        -M q35 \
+        -cpu max \
+	-m 4096  \
+	-smp 4,sockets=4,cores=1,threads=1 \
+        -device virtio-scsi-pci,id=virtio_scsi_pci0,bus=pcie.0,addr=0x5 \
+        -drive file=/home/test/nested,format=qcow2,if=none,id=drive-scsi0-0-0 \
+        -device scsi-hd,drive=drive-scsi0-0-0,id=scsi0-0-0 \
+        -netdev tap,id=hostnet0,vhost=on \
+	-nographic \
+        -monitor telnet::3333,server,nowait \ "
+set HostNetwork "enp4s0f0"
+##########################################################################################################################################
+#
+#
+#case1
+#
+#
+##########################################################################################################################################
+proc case1 { } {
+#
+#do not set this global,can use 
+#
+global HostUser
+global HostIP
+global HostPassword
+global GuestIP
+global GuestUser
+global GuestPassword
+global MonitorTelnetID
+global spawn_id
+global VMBase
+#
+#this is mac net setting and can be VM setting with VMBase
+#
+set MacL1 "-device virtio-net-pci,netdev=hostnet0,id=net0,mac=52:54:00:b3:35:b3,bus=pcie.0,addr=0x6  "
+set VML1 $VMBase$MacL1
+set MacL2 "-device virtio-net-pci,netdev=hostnet0,id=net0,mac=52:54:00:b3:35:b4,bus=pcie.0,addr=0x6  "
+set VML2 $VMBase$MacL2
+#set fp [ open /$CurrentTime/Case1Result w ]
+#puts $fp "CASE 1: test checkpint and finnal result"
+#
+#login Host and Start VM
+#
+spawn ssh $HostUser@$HostIP
+SSH $HostPassword
+#this is for control different machine,when send command,should know which spawn_id you are in now
+set SpawnSSHHostID $spawn_id
+ShutdownVM 
+StartVM $VML1
+sleep 60
+send "nmap -sP 10.73.75.255/22|grep -B2 \"52:54:00:B3:35:B3\"|head -n 1|sed \"s/.*(//g\"|sed \"s/\)//g\" \r"
+set timeout 60
+expect -re ".*\r\n(.*)\r\n\u001b]0;.*"
+set GuestIP "$expect_out(1,string)"
+
+spawn ssh $GuestUser@$GuestIP
+SSH $GuestPassword
+set SpawnSSHGuestID $spawn_id
+set spawn_id $SpawnSSHGuestID
+send "$VML2\r"
+expect "*login:"
+send "root\r"
+expect "Password:"
+send "redhat\r"
+expect "*#*"
+send "dd if=/dev/zero of=2G bs=1M count=2000\r"
+sleep 30
+send "\r"
+expect "#"
+send "echo $?\r"
+expect "*0*"
+#
+#check network if fine
+#
+send "pkill dhclient\r"
+expect "*#*"
+send "dhclient\r"
+expect "*#*"
+send "ping baidu.com -c 10\r"
+expect "*10 packets transmitted, 10 received, 0% packet loss*"
+#
+#
+#
+send "reboot \r"
+expect "login:"
+send "root\r"
+expect "Password:"
+send "redhat\r"
+expect "*#"
+#
+#when test finished shutdown VM
+#
+send "shutdown now\r"
+expect "*#"
+send "shutdown now\r"
+#
+#use pid to shutdown again
+#
+}
+
+########################################################################################################################################################
+#
+#
+#main run
+#
+#
+####################################################################################################################################################
+case1
+log_file

@@ -1,0 +1,22 @@
+
+preintall is to install pkg and configure env
+
+install is to install vm
+
+test is for test
+
+all machine :root/redhat(if not,you should change)
+
+
+you should use like:
+
+this is env preparetion,you should only run once
+    ./install_l1.ctl 10.73.224.191
+
+    notice there, when install l2,we only need host ip(the sever),not l1 ip
+    ./install_l2.ctl 10.73.224.191
+
+this test case,can run many case(wait to add): 
+    ./simpleTestNetworkDdReboot 10.73.224.191
+
+

@@ -1,0 +1,5 @@
+DEVICE="switch"
+NAME="switch"
+ONBOOT="yes"
+TYPE=bridge
+BOOTPROTO="dhcp"
